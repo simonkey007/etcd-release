@@ -10,3 +10,5 @@ const SingleInstanceRollingDeployWithoutTLSIPOffset int = 60
 const SingleInstanceRollingDeployWithTLSIPOffset int = 70
 const KillVMWithoutTLSIPOffset = 80
 const KillVMWithTLSIPOffset = 90
+const KillVMWithoutTLSTurbulenceJobIPOffset = 240
+const KillVMWithTLSTurbulenceJobIPOffset = 241
