@@ -1,0 +1,30 @@
+---
+name: etcd_proxy
+
+description: ""
+
+templates:
+  etcd_proxy_ctl.erb: bin/etcd_proxy_ctl
+  pre-start.erb: bin/pre-start
+
+packages:
+  - etcd-common
+  - etcd_proxy
+
+properties:
+  etcd_proxy.etcd.ca_cert:
+    description: "ETCD ca certificate"
+
+  etcd_proxy.etcd.client_cert:
+    description: "ETCD client certificate"
+
+  etcd_proxy.etcd.client_key:
+    description: "ETCD client key"
+
+  etcd_proxy.etcd.machine:
+    description: "address of ETCD server to instrument"
+    default: "127.0.0.1"
+
+  etcd_proxy.etcd.port:
+    description: "port of ETCD server to instrument"
+    default: 4001

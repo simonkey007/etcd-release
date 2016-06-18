@@ -8,9 +8,9 @@ jobs:
   networks:
   - name: etcd1
     static_ips:
-    - 10.244.4.7
-    - 10.244.4.8
-    - 10.244.4.9
+    - 10.244.4.17
+    - 10.244.4.18
+    - 10.244.4.19
   persistent_disk: 1024
   properties:
     consul:
@@ -21,7 +21,7 @@ jobs:
   - name: consul_agent
     release: consul
 
-- name: etcd_z1
+- name: etcd_no_tls
   instances: 3
   networks:
   - name: etcd1
@@ -29,6 +29,42 @@ jobs:
     - 10.244.4.4
     - 10.244.4.5
     - 10.244.4.6
+  resource_pool: etcd_z1
+  persistent_disk: 1024
+  properties:
+    consul:
+      agent:
+        mode: agent
+  templates:
+  - name: consul_agent
+    release: consul
+  - name: etcd_proxy
+    release: etcd
+
+- name: spammer
+  instances: 5
+  networks:
+  - name: etcd1
+    static_ips:
+    - 10.244.4.7
+    - 10.244.4.8
+    - 10.244.4.9
+    - 10.244.4.10
+    - 10.244.4.11
+  resource_pool: etcd_z1
+  persistent_disk: 1024
+  templates:
+  - release: etcd
+    name: etcd_spammer
+
+- name: etcd_tls
+  instances: 3
+  networks:
+  - name: etcd1
+    static_ips:
+    - 10.244.4.14
+    - 10.244.4.15
+    - 10.244.4.16
   persistent_disk: 1024
   properties:
     consul:
@@ -42,34 +78,13 @@ jobs:
   - name: etcd
     release: etcd
 
-- name: etcd_proxy_z1
-  instances: 1
-  networks:
-  - name: etcd1
-    static_ips:
-    - 10.244.4.10
-  persistent_disk: 1024
-  properties:
-    consul:
-      agent:
-        mode: agent
-  resource_pool: etcd_z1
-  templates:
-  - name: consul_agent
-    release: consul
-  - name: etcd_proxy
-    release: etcd
-
 networks:
-- name: etcd1
+- type: manual
+  name: etcd1
   subnets:
-  - cloud_properties:
-      name: random
-    gateway: 10.244.4.1
-    range: 10.244.4.0/24
-    reserved:
+  - reserved:
     - 10.244.4.2-10.244.4.3
-    - 10.244.4.14-10.244.4.254
+    - 10.244.4.30-10.244.4.254
     static:
     - 10.244.4.4
     - 10.244.4.5
@@ -78,20 +93,32 @@ networks:
     - 10.244.4.8
     - 10.244.4.9
     - 10.244.4.10
-  type: manual
+    - 10.244.4.11
+    - 10.244.4.12
+    - 10.244.4.13
+    - 10.244.4.14
+    - 10.244.4.15
+    - 10.244.4.16
+    - 10.244.4.17
+    - 10.244.4.18
+    - 10.244.4.19
+    cloud_properties:
+      name: random
+    gateway: 10.244.4.1
+    range: 10.244.4.0/24
 
 compilation:
+  workers: 3
   cloud_properties: {}
   network: etcd1
   reuse_compilation_vms: true
-  workers: 3
 
 update:
-  canaries: 1
   canary_watch_time: 1000-180000
   max_in_flight: 1
   serial: true
   update_watch_time: 1000-180000
+  canaries: 1
 
 resource_pools:
 - name: etcd_z1
@@ -101,13 +128,13 @@ resource_pools:
     name: bosh-warden-boshlite-ubuntu-trusty-go_agent
     version: latest
 
-releases:
-- name: consul
-  version: latest
-- name: etcd
-  version: latest
-
 properties:
+  etcd_spammer:
+    etcd:
+      machines:
+      - 10.244.4.4
+      - 10.244.4.5
+      - 10.244.4.6
   etcd_proxy:
     etcd:
       machine: https://etcd.service.cf.internal
@@ -200,9 +227,9 @@ properties:
       domain: cf.internal
       servers:
         lan:
-        - 10.244.4.7
-        - 10.244.4.8
-        - 10.244.4.9
+        - 10.244.4.17
+        - 10.244.4.18
+        - 10.244.4.19
     agent_cert: |+
       -----BEGIN CERTIFICATE-----
       MIIEITCCAgugAwIBAgIQTDMCJHBiQrY8hlM78doHTzALBgkqhkiG9w0BAQswEzER
@@ -350,7 +377,7 @@ properties:
     heartbeat_interval_in_milliseconds: 50
     cluster:
     - instances: 3
-      name: etcd_z1
+      name: etcd_tls
     machines:
     - etcd.service.cf.internal
     ca_cert: |-
@@ -577,3 +604,9 @@ properties:
       cykNYAMddd5xUDyB2Bg/gCvmzOEcZYIhdqbFVFpb1HxoZ7L7eC6u7+kyvAXbF3at
       CscMkuvB4+005RWJIN9GJbQf1+OsQbKotX0OerT2aCYaz3g/Y3mZdWU=
       -----END RSA PRIVATE KEY-----
+
+releases:
+- name: consul
+  version: latest
+- name: etcd
+  version: latest

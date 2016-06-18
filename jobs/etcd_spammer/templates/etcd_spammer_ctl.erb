@@ -1,0 +1,90 @@
+#!/bin/bash -exu
+
+SCRIPT_NAME=$(basename ${0})
+RUN_DIR=/var/vcap/sys/run/etcd_spammer
+PIDFILE=${RUN_DIR}/etcd_spammer.pid
+WORK_DIR=/var/vcap/store/etcd_spammer
+LOG_DIR=/var/vcap/sys/log/etcd_spammer
+ETCD_COMMON_DIR=/var/vcap/packages/etcd-common
+CERTS_DIR=/var/vcap/jobs/etcd_spammer/certs
+
+function setup() {
+  set +xu
+  source "${ETCD_COMMON_DIR}/utils.sh"
+  set -xu
+
+  mkdir -p ${RUN_DIR}
+
+  exec > >(tee -a >(logger -p user.info -t vcap.${SCRIPT_NAME}.stdout) | awk -W interactive '{lineWithDate="echo [`date +\"%Y-%m-%d %H:%M:%S%z\"`] \"" $0 "\""; system(lineWithDate)  }' >> ${LOG_DIR}/${SCRIPT_NAME}.log)
+  exec 2> >(tee -a >(logger -p user.error -t vcap.${SCRIPT_NAME}.stderr) | awk -W interactive '{lineWithDate="echo [`date +\"%Y-%m-%d %H:%M:%S%z\"`] \"" $0 "\""; system(lineWithDate)  }' >> ${LOG_DIR}/${SCRIPT_NAME}.err.log)
+
+}
+
+function create_cert_files() {
+  echo -n '<%= p("etcd_spammer.etcd.ca_cert") %>' > "${CERTS_DIR}/ca.crt"
+  echo -n '<%= p("etcd_spammer.etcd.client_cert") %>' > "${CERTS_DIR}/client.crt"
+  echo -n '<%= p("etcd_spammer.etcd.client_key") %>' > "${CERTS_DIR}/client.key"
+}
+
+function start_etcd_spammer() {
+  echo $$ > "${PIDFILE}"
+
+  create_cert_files
+
+  local node
+  node=<%= spec.index %>
+
+  local machines
+  machines=(<%= p("etcd_spammer.etcd.machines").map{ |machine| "\"#{machine}\"" }.join(" ") %>)
+
+  local machines_count
+  machines_count=<%= p("etcd_spammer.etcd.machines").size %>
+
+  local etcd_port
+  etcd_port=<%= p("etcd_spammer.etcd.port") %>
+
+  local protocol
+  protocol="http"
+
+  local sec_flags
+  sec_flags=""
+
+  <% if p("etcd_spammer.enable_ssl") %>
+  protocol="https"
+  sec_flags="--cacert ${CERTS_DIR}/ca.crt --cert ${CERTS_DIR}/client.crt --key ${CERTS_DIR}/client.key"
+  <% end %>
+
+  set +e
+  while true
+  do
+    local etcd_address
+    etcd_address=${machines[$((RANDOM % ${machines_count}))]}:${etcd_port}
+
+    local key
+    key=${node}_$(date +%s)
+
+    curl ${sec_flags} -X PUT ${protocol}://${etcd_address}/v2/keys/${key}
+    sleep 1
+    curl ${sec_flags} ${protocol}://${etcd_address}/v2/keys/${key}
+    sleep 1
+  done
+  set -e
+}
+
+setup
+
+case ${1} in
+  start)
+  pid_guard ${PIDFILE} "etcd_spammer"
+
+  start_etcd_spammer
+  ;;
+
+  stop)
+  kill_and_wait ${PIDFILE}
+  ;;
+
+  *)
+  echo "Usage: ctl {start|stop}"
+  ;;
+esac

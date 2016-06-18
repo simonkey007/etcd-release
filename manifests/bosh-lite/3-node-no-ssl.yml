@@ -1,9 +1,9 @@
-director_uuid: BOSH-DIRECTOR-UUID
+director_uuid: 93c01d2d-a2a5-49d8-8d02-389fd223a9cf
 
 name: etcd
 
 jobs:
-- name: etcd_z1
+- name: etcd
   instances: 3
   networks:
   - name: etcd1
@@ -17,19 +17,39 @@ jobs:
   - release: etcd
     name: etcd
 
+- name: spammer
+  instances: 5
+  networks:
+  - name: etcd1
+    static_ips:
+    - 10.244.4.7
+    - 10.244.4.8
+    - 10.244.4.9
+    - 10.244.4.10
+    - 10.244.4.11
+  resource_pool: etcd_z1
+  persistent_disk: 1024
+  templates:
+  - release: etcd
+    name: etcd_spammer
+
 networks:
 - type: manual
   name: etcd1
   subnets:
   - reserved:
     - 10.244.4.2-10.244.4.3
-    - 10.244.4.12-10.244.4.254
+    - 10.244.4.20-10.244.4.254
     static:
     - 10.244.4.4
     - 10.244.4.5
     - 10.244.4.6
     - 10.244.4.7
     - 10.244.4.8
+    - 10.244.4.9
+    - 10.244.4.10
+    - 10.244.4.11
+    - 10.244.4.12
     cloud_properties:
       name: random
     gateway: 10.244.4.1
@@ -57,6 +77,12 @@ resource_pools:
     version: latest
 
 properties:
+  etcd_spammer:
+    etcd:
+      machines:
+      - 10.244.4.4
+      - 10.244.4.5
+      - 10.244.4.6
   etcd:
     machines:
     - 10.244.4.4

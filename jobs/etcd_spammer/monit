@@ -1,0 +1,6 @@
+check process etcd_spammer
+  with pidfile /var/vcap/sys/run/etcd_spammer/etcd_spammer.pid
+  start program "/var/vcap/jobs/etcd_spammer/bin/etcd_spammer_ctl start"
+    as uid vcap and gid vcap with timeout 60 seconds
+  stop program "/var/vcap/jobs/etcd_spammer/bin/etcd_spammer_ctl stop"
+  group vcap

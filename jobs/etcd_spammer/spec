@@ -1,0 +1,36 @@
+---
+name: etcd_spammer
+
+description: ""
+
+templates:
+  etcd_spammer_ctl.erb: bin/etcd_spammer_ctl
+  pre-start.erb: bin/pre-start
+
+packages:
+  - etcd-common
+
+properties:
+  etcd_spammer.enable_ssl:
+    description: ""
+    default: false
+
+  etcd_spammer.etcd.ca_cert:
+    description: "ETCD ca certificate"
+    default: ""
+
+  etcd_spammer.etcd.client_cert:
+    description: "ETCD client certificate"
+    default: ""
+
+  etcd_spammer.etcd.client_key:
+    description: "ETCD client key"
+    default: ""
+
+  etcd_spammer.etcd.machines:
+    description: "address of ETCD server to instrument"
+    default: []
+
+  etcd_spammer.etcd.port:
+    description: "port of ETCD server to instrument"
+    default: 4001
