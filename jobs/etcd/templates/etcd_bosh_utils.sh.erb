@@ -158,6 +158,26 @@ member_add() {
   done
 }
 
+member_update() {
+  local id
+  id=$(extract_my_id "$(member_list)")
+  # FIXME do we need to make the request to all members, https://coreos.com/etcd/docs/latest/runtime-configuration.html#update-a-member
+  for cluster_member in <%= cluster_members %>
+  do
+    set +e
+    /var/vcap/packages/etcd/etcdctl ${etcdctl_sec_flags} -debug -C "${cluster_member}" member update ${id} ${advertise_peer_url}
+    local exitstatus=$?
+    set -e
+    if [ $exitstatus -eq 0 ]; then
+      return
+    fi
+  done
+}
+
+current_peer_url() {
+  member_list | grep "name=${node_name}" | cut -d" " -f3 | sed 's/peerURLs=https:\/\///g' | sed 's/:7001//g'
+}
+
 extract_cluster_from_member_list() {
   members_with_names=$(echo "$1" | grep 'name=' | grep -v 'name= ' | sed 's/\[.*\]//')
   name_peerURL_pairs=$(echo "$members_with_names" | sed 's/.*name=//' | sed 's/ clientURLs.*//' | sed 's/ peerURLs//')
@@ -169,7 +189,7 @@ prior_cluster_had_other_nodes() {
 }
 
 extract_my_id() {
-  echo "$1" | grep ${advertise_peer_url} | sed 's/:.*//' | sed 's/\[.*\]//'
+  echo "$1" | grep "name=${node_name}" | sed 's/:.*//' | sed 's/\[.*\]//'
 }
 
 safe_teardown() {
