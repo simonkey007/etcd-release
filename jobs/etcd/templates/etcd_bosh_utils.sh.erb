@@ -27,6 +27,8 @@ node_name="<%= name.gsub('_', '-') %>-<%= spec.index %>"
   client_protocol = p("etcd.require_ssl") ? "https" : "http"
   peer_protocol = p("etcd.peer_require_ssl") ? "https" : "http"
 
+  member_list_url = "#{client_protocol}://#{p("etcd.advertise_urls_dns_suffix")}:4001"
+
   if p("etcd.require_ssl") || p("etcd.peer_require_ssl")
     cluster_members = p("etcd.cluster").map do |zone|
       result = []
@@ -123,7 +125,7 @@ member_list() {
   for cluster_member in <%= cluster_members %>
   do
     set +e
-    /var/vcap/packages/etcd/etcdctl ${etcdctl_sec_flags} -debug -C "${cluster_member}" member list
+	/var/vcap/packages/etcd/etcdctl ${etcdctl_sec_flags} -debug -C "<%= member_list_url %>" member list
     local exitstatus=$?
     set -e
     if [ $exitstatus -eq 0 ]; then
@@ -149,7 +151,7 @@ member_add() {
   for cluster_member in <%= cluster_members %>
   do
     set +e
-    /var/vcap/packages/etcd/etcdctl ${etcdctl_sec_flags} -debug -C "${cluster_member}" member add ${node_name} ${advertise_peer_url}
+    /var/vcap/packages/etcd/etcdctl ${etcdctl_sec_flags} -debug -C "<%= member_list_url %>" member add ${node_name} ${advertise_peer_url}
     local exitstatus=$?
     set -e
     if [ $exitstatus -eq 0 ]; then
