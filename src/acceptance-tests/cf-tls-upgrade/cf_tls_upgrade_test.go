@@ -14,7 +14,6 @@ import (
 	"github.com/cloudfoundry-incubator/etcd-release/src/acceptance-tests/cf-tls-upgrade/logspammer"
 	"github.com/cloudfoundry-incubator/etcd-release/src/acceptance-tests/cf-tls-upgrade/syslogchecker"
 	"github.com/cloudfoundry-incubator/etcd-release/src/acceptance-tests/testing/helpers"
-	"github.com/go-yaml/yaml"
 
 	"github.com/cloudfoundry-incubator/cf-test-helpers/cf"
 	"github.com/cloudfoundry-incubator/cf-test-helpers/generator"
@@ -22,6 +21,8 @@ import (
 	"github.com/cloudfoundry/sonde-go/events"
 	"github.com/onsi/gomega/gexec"
 	"github.com/pivotal-cf-experimental/bosh-test/bosh"
+	"github.com/pivotal-cf-experimental/destiny/etcdwithops"
+	"github.com/pivotal-cf-experimental/destiny/ops"
 
 	. "github.com/onsi/ginkgo"
 	. "github.com/onsi/gomega"
@@ -42,25 +43,25 @@ func (gen) Generate() string {
 	return strconv.Itoa(rand.Int())
 }
 
-func getNonErrandVMsFromRawManifest(rawManifest []byte) ([]bosh.VM, error) {
-	var vms []bosh.VM
+// func getNonErrandVMsFromRawManifest(rawManifest []byte) ([]bosh.VM, error) {
+// 	var vms []bosh.VM
 
-	var manifest helpers.Manifest
-	err := yaml.Unmarshal(rawManifest, &manifest)
-	if err != nil {
-		return nil, err
-	}
+// 	var manifest helpers.Manifest
+// 	err := yaml.Unmarshal(rawManifest, &manifest)
+// 	if err != nil {
+// 		return nil, err
+// 	}
 
-	for _, job := range manifest.Jobs {
-		for i := 0; i < job.Instances; i++ {
-			if job.Lifecycle != "errand" {
-				vms = append(vms, bosh.VM{JobName: job.Name, Index: i, State: "running"})
-			}
-		}
-	}
+// 	for _, job := range manifest.Jobs {
+// 		for i := 0; i < job.Instances; i++ {
+// 			if job.Lifecycle != "errand" {
+// 				vms = append(vms, bosh.VM{JobName: job.Name, Index: i, State: "running"})
+// 			}
+// 		}
+// 	}
 
-	return vms, nil
-}
+// 	return vms, nil
+// }
 
 type runner struct{}
 
@@ -71,11 +72,14 @@ func (runner) Run(args ...string) ([]byte, error) {
 var _ = Describe("CF TLS Upgrade Test", func() {
 	It("successfully upgrades etcd cluster to use TLS", func() {
 		var (
-			migrationManifest []byte
-			err               error
-			appName           string
-			spammer           *logspammer.Spammer
-			checker           syslogchecker.Checker
+			manifest     string
+			manifestName string
+
+			err     error
+			appName string
+
+			spammer *logspammer.Spammer
+			checker syslogchecker.Checker
 		)
 
 		var getToken = func() string {
@@ -149,6 +153,9 @@ var _ = Describe("CF TLS Upgrade Test", func() {
 		By("spamming logs", func() {
 			consumer := consumer.New(fmt.Sprintf("wss://doppler.%s:4443", config.CF.Domain), &tls.Config{InsecureSkipVerify: true}, nil)
 
+			fmt.Println("============================")
+			fmt.Println(fmt.Sprintf("http://%s.%s", appName, config.CF.Domain))
+
 			spammer = logspammer.NewSpammer(os.Stdout, fmt.Sprintf("http://%s.%s", appName, config.CF.Domain),
 				func() (<-chan *events.Envelope, <-chan error) {
 					return consumer.Stream(getAppGuid(appName), getToken())
@@ -157,50 +164,64 @@ var _ = Describe("CF TLS Upgrade Test", func() {
 			)
 			Eventually(func() bool {
 				return spammer.CheckStream()
-			}, "10s", "1s").Should(BeTrue())
+			}, "20s", "1s").Should(BeTrue())
 
 			err = spammer.Start()
 			Expect(err).NotTo(HaveOccurred())
 		})
 
 		By("deploying a TLS etcd cluster, scaling down the non-TLS etcd cluster to 1 node and converting it to a proxy", func() {
-			originalManifest, err := client.DownloadManifest(config.BOSH.DeploymentName)
+			// originalManifest, err := client.DownloadManifest(config.BOSH.DeploymentName)
+			// Expect(err).NotTo(HaveOccurred())
+
+			manifestName, err = ops.ManifestName(manifest)
 			Expect(err).NotTo(HaveOccurred())
 
-			migrationManifest, err = helpers.CreateCFTLSMigrationManifest(originalManifest)
-			Expect(err).NotTo(HaveOccurred())
+			manifest, err = etcdwithops.NewManifestV2(etcdwithops.ConfigV2{
+				Name:      manifestName,
+				AZs:       []string{"z1", "z2"},
+				EnableSSL: true,
+			})
 
-			_, err = client.Deploy(migrationManifest)
+			_, err = boshClient.Deploy([]byte(manifest))
 			Expect(err).NotTo(HaveOccurred())
+			// migrationManifest, err = helpers.CreateCFTLSMigrationManifest(originalManifest)
+			// Expect(err).NotTo(HaveOccurred())
+
+			// _, err = client.Deploy(migrationManifest)
+			// Expect(err).NotTo(HaveOccurred())
 		})
 
 		By("checking if expected VMs are running", func() {
-			expectedVMs, err := getNonErrandVMsFromRawManifest(migrationManifest)
-			Expect(err).NotTo(HaveOccurred())
-
 			Eventually(func() ([]bosh.VM, error) {
-				return helpers.DeploymentVMsWithOps(client, config.BOSH.DeploymentName)
-			}, "1m", "10s").Should(ConsistOf(expectedVMs))
+				return helpers.DeploymentVMsWithOps(boshClient, manifestName)
+			}, "1m", "10s").Should(ConsistOf(helpers.GetVMsFromManifestWithOps(manifest)))
+			// expectedVMs, err := getNonErrandVMsFromRawManifest(migrationManifest)
+			// Expect(err).NotTo(HaveOccurred())
+
+			// Eventually(func() ([]bosh.VM, error) {
+			// 	return helpers.DeploymentVMsWithOps(client, config.BOSH.DeploymentName)
+			// }, "1m", "10s").Should(ConsistOf(expectedVMs))
 		})
 
-		By("deploy diego to switch clients to tls etcd", func() {
-			deploymentName := fmt.Sprintf("%s-diego", config.BOSH.DeploymentName)
-			rawManifest, err := client.DownloadManifest(deploymentName)
-			Expect(err).NotTo(HaveOccurred())
+		// By("deploy diego to switch clients to tls etcd", func() {
+		// 	deploymentName := fmt.Sprintf("%s-diego", config.BOSH.DeploymentName)
+		// 	rawManifest, err := client.DownloadManifest(deploymentName)
+		// 	Expect(err).NotTo(HaveOccurred())
 
-			manifest, err := helpers.CreateDiegoTLSMigrationManifest(rawManifest)
-			Expect(err).NotTo(HaveOccurred())
+		// 	manifest, err := helpers.CreateDiegoTLSMigrationManifest(rawManifest)
+		// 	Expect(err).NotTo(HaveOccurred())
 
-			_, err = client.Deploy(manifest)
-			Expect(err).NotTo(HaveOccurred())
+		// 	_, err = client.Deploy(manifest)
+		// 	Expect(err).NotTo(HaveOccurred())
 
-			expectedVMs, err := getNonErrandVMsFromRawManifest(manifest)
-			Expect(err).NotTo(HaveOccurred())
+		// 	expectedVMs, err := getNonErrandVMsFromRawManifest(manifest)
+		// 	Expect(err).NotTo(HaveOccurred())
 
-			Eventually(func() ([]bosh.VM, error) {
-				return helpers.DeploymentVMsWithOps(client, deploymentName)
-			}, "1m", "10s").Should(ConsistOf(expectedVMs))
-		})
+		// 	Eventually(func() ([]bosh.VM, error) {
+		// 		return helpers.DeploymentVMsWithOps(client, deploymentName)
+		// 	}, "1m", "10s").Should(ConsistOf(expectedVMs))
+		// })
 
 		By("stopping spammer and checking for errors", func() {
 			err = spammer.Stop()

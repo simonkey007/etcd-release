@@ -46,6 +46,7 @@ type Spammer struct {
 func NewSpammer(logger io.Writer, appURL string, streamGenerator func() (<-chan *events.Envelope, <-chan error), frequency time.Duration) *Spammer {
 	timeNow = time.Now
 
+	logger.Write([]byte(appURL))
 	msgChan, errChan := streamGenerator()
 	return &Spammer{
 		appURL:          appURL,
@@ -66,16 +67,19 @@ func NewSpammer(logger io.Writer, appURL string, streamGenerator func() (<-chan 
 func (s *Spammer) CheckStream() bool {
 	resp, err := http.Get(fmt.Sprintf("%s/log/TEST", s.appURL))
 	if err != nil {
+		s.logger.Write([]byte(err.Error()))
 		return false
 	}
 
 	_, err = ioutil.ReadAll(resp.Body)
 	if err != nil {
+		s.logger.Write([]byte(err.Error()))
 		return false
 	}
 
 	err = resp.Body.Close()
 	if err != nil {
+		s.logger.Write([]byte(err.Error()))
 		return false
 	}
 
